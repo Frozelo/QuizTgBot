@@ -1,48 +1,32 @@
 package main
 
 import (
-	"encoding/json"
-	"fmt"
 	"log"
-	"net/http"
-	"quiz-bot/internal/models"
+	"os"
+
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
-var questions = []models.Question{
-	{
-		ID: 1, Question: "What is a goroutine in Go?",
-		Answer: "A goroutine is a lightweight thread managed by the Go runtime.",
-		Points: 1,
-	},
-	{ID: 2,
-		Question: "How do you handle errors in Go?",
-		Answer:   "Errors are handled using the error type and the 'if err != nil' pattern.",
-		Points:   1,
-	},
-}
-
-func getQuestion(w http.ResponseWriter, r *http.Request) {
-	questionID := r.URL.Query().Get("id")
-	if questionID == "" {
-		http.Error(w, "Missing question ID", http.StatusBadRequest)
-		return
+func main() {
+	token := os.Getenv("BOT_TOKEN")
+	bot, err := tgbotapi.NewBotAPI(token)
+	if err != nil {
+		log.Panic(err)
 	}
 
-	for _, question := range questions {
-		if fmt.Sprintf("%d", question.ID) == questionID {
-			json.NewEncoder(w).Encode(question)
-			return
+	bot.Debug = true
+
+	log.Printf("Authorized on account %s", bot.Self.UserName)
+
+	u := tgbotapi.NewUpdate(0)
+	u.Timeout = 60
+
+	updates := bot.GetUpdatesChan(u)
+
+	for update := range updates {
+		if update.Message != nil {
+			msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Hi there!")
+			bot.Send(msg)
 		}
 	}
-
-	http.Error(w, "Question not found", http.StatusNotFound)
-}
-
-func main() {
-	http.HandleFunc("/questions", getQuestion)
-	fmt.Println("Listening on port 8080")
-	if err := http.ListenAndServe(":8080", nil); err != nil {
-		log.Fatal(err)
-	}
-
 }
