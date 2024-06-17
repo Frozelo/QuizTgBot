@@ -21,20 +21,26 @@ type BotHandler struct {
 	bot             *tgbotapi.BotAPI
 	questionService *services.QuestionService
 	currentQuestion *models.Question
-	score           uint
-	state           int
+	score           int
+	state           BotState
+	category        string
 }
 
 func NewBotHandler(bot *tgbotapi.BotAPI, questionService *services.QuestionService) *BotHandler {
-	return &BotHandler{bot: bot, questionService: questionService, state: int(NormalState)}
+	return &BotHandler{
+		bot:             bot,
+		questionService: questionService,
+		state:           NormalState,
+	}
 }
 
-func (h *BotHandler) handleMessage(message *tgbotapi.Message) {
+func (h *BotHandler) HandleMessage(message *tgbotapi.Message) {
+	log.Printf("[%s] %s", message.From.UserName, message.Text)
 
 	switch h.state {
-	case int(NormalState):
+	case NormalState:
 		h.handleNormalState(message)
-	case int(AwaitingCategoryState):
+	case AwaitingCategoryState:
 		h.handleAwaitingCategoryState(message)
 	}
 }
@@ -44,49 +50,64 @@ func (h *BotHandler) handleNormalState(message *tgbotapi.Message) {
 	case "start":
 		h.bot.Send(tgbotapi.NewMessage(message.Chat.ID, "Привет! Я бот для подготовки к собеседованиям по Go. Используйте команду /question для получения вопроса. Используйте команду /category для выбора категории вопросов."))
 	case "question":
-		question := h.questionService.GetRandom()
-		h.currentQuestion = &question
-		questionText := question.Question
-		h.bot.Send(tgbotapi.NewMessage(message.Chat.ID, questionText))
+		h.askRandomQuestion(message.Chat.ID)
 	case "category":
 		h.bot.Send(tgbotapi.NewMessage(message.Chat.ID, "Пожалуйста, укажите категорию вопросов."))
-		h.state = int(AwaitingCategoryState)
+		h.state = AwaitingCategoryState
+	case "exit":
+		h.endTest(message.Chat.ID)
 	default:
 		h.handleAnswer(message)
 	}
 }
 
 func (h *BotHandler) handleAwaitingCategoryState(message *tgbotapi.Message) {
-	category := strings.TrimSpace(message.Text)
-	question, err := h.questionService.GetRandomByCategory(category)
-	if err != nil {
-		h.bot.Send(tgbotapi.NewMessage(message.Chat.ID, "Категория вопросов не найдена."))
-		h.state = int(NormalState)
-		return
-	}
-
-	h.currentQuestion = &question
-	questionText := question.Question
-	h.bot.Send(tgbotapi.NewMessage(message.Chat.ID, questionText))
-	h.state = int(NormalState)
+	h.category = strings.TrimSpace(message.Text)
+	h.state = NormalState
+	h.askRandomQuestionByCategory(message.Chat.ID)
 }
 
 func (h *BotHandler) handleAnswer(message *tgbotapi.Message) {
 	if h.currentQuestion != nil {
-		log.Printf("Total current question is %v", h.currentQuestion)
 		userAnswer := strings.TrimSpace(message.Text)
 		var responseMsg tgbotapi.MessageConfig
 		if h.questionService.CheckAnswer(*h.currentQuestion, userAnswer) {
-			h.score += h.currentQuestion.Points
+			h.score += int(h.currentQuestion.Points)
 			responseMsg = tgbotapi.NewMessage(message.Chat.ID, fmt.Sprintf("Правильно! Ваши очки: %d", h.score))
 		} else {
 			responseMsg = tgbotapi.NewMessage(message.Chat.ID, "Неправильно. Попробуйте ещё раз.")
 		}
 		h.bot.Send(responseMsg)
 
-		question := h.questionService.GetRandom()
-		h.currentQuestion = &question
-		questionText := question.Question
-		h.bot.Send(tgbotapi.NewMessage(message.Chat.ID, questionText))
+		if h.category == "" {
+			h.askRandomQuestion(message.Chat.ID)
+		} else {
+			h.askRandomQuestionByCategory(message.Chat.ID)
+		}
 	}
+}
+
+func (h *BotHandler) askRandomQuestion(chatID int64) {
+	question := h.questionService.GetRandom()
+	h.currentQuestion = &question
+	h.bot.Send(tgbotapi.NewMessage(chatID, question.Question))
+}
+
+func (h *BotHandler) askRandomQuestionByCategory(chatID int64) {
+	question, err := h.questionService.GetRandomByCategory(h.category)
+	if err != nil {
+		h.bot.Send(tgbotapi.NewMessage(chatID, "В данной категории нет вопросов."))
+	} else {
+		h.currentQuestion = &question
+		h.bot.Send(tgbotapi.NewMessage(chatID, question.Question))
+	}
+}
+
+func (h *BotHandler) endTest(chatID int64) {
+	finalScoreMessage := fmt.Sprintf("Тест завершен. Ваши итоговые очки: %d", h.score)
+	h.bot.Send(tgbotapi.NewMessage(chatID, finalScoreMessage))
+	h.currentQuestion = nil
+	h.score = 0
+	h.category = ""
+	h.state = NormalState
 }

@@ -38,7 +38,7 @@ func Start() {
 			continue
 		}
 
-		handler.handleMessage(update.Message)
+		handler.HandleMessage(update.Message)
 
 	}
 }

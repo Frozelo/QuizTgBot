@@ -1,6 +1,9 @@
 package repository
 
-import "quiz-bot/internal/domain/models"
+import (
+	"errors"
+	"quiz-bot/internal/domain/models"
+)
 
 type InMemoryQuestionRepository struct {
 	questions []models.Question
@@ -102,6 +105,9 @@ func (r *InMemoryQuestionRepository) GetAllByCategory(category string) ([]models
 		if q.Category == category {
 			questions = append(questions, q)
 		}
+	}
+	if len(questions) == 0 {
+		return []models.Question{}, errors.New("No Question found for category " + category)
 	}
 	return questions, nil
 }
