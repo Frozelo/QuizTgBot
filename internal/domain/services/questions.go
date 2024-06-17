@@ -10,6 +10,7 @@ import (
 type ImMemmoryRepository interface {
 	GetAll() []models.Question
 	GetByID(id uint) (models.Question, bool)
+	GetAllByCategory(category string) ([]models.Question, error)
 }
 
 type QuestionService struct {
@@ -20,24 +21,34 @@ func NewQuestionService(repo ImMemmoryRepository) *QuestionService {
 	return &QuestionService{repo: repo}
 }
 
-func (s *QuestionService) GetRandomQuestion() models.Question {
+func (s *QuestionService) GetRandom() models.Question {
 	questions := s.repo.GetAll()
 	rand.NewSource(time.Now().UnixMicro())
 	return questions[rand.Intn(len(questions))]
 }
 
-func (s *QuestionService) CheckAnswer(question models.Question, answer string) bool {
-	expectedAnswer := question.Answer
-	expectedWords := strings.Fields(expectedAnswer)
-	userWords := strings.Fields(answer)
+func (s *QuestionService) GetRandomByCategory(category string) (models.Question, error) {
+	question, err := s.repo.GetAllByCategory(category)
+	if err != nil {
+		return models.Question{}, err
+	}
+	rand.NewSource(time.Now().UnixMicro())
+	return question[rand.Intn(len(question))], nil
 
+}
+
+func (s *QuestionService) CheckAnswer(question models.Question, answer string) bool {
+	expectedWords := strings.Fields(strings.ToLower(question.Answer))
+	userWords := strings.Fields(strings.ToLower(answer))
+
+	words := make(map[string]bool)
 	for _, word := range expectedWords {
-		for _, userWord := range userWords {
-			if strings.Contains(strings.ToLower(userWord), strings.ToLower(word)) {
-				return true
-			}
+		words[word] = true
+	}
+	for _, word := range userWords {
+		if _, ok := words[word]; ok {
+			return true
 		}
 	}
-
 	return false
 }

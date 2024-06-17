@@ -33,5 +33,12 @@ func Start() {
 
 	updates := bot.GetUpdatesChan(u)
 
-	handler.HandleUpdates(updates)
+	for update := range updates {
+		if update.Message == nil {
+			continue
+		}
+
+		handler.handleMessage(update.Message)
+
+	}
 }
