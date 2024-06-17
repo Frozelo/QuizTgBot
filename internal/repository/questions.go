@@ -120,3 +120,19 @@ func (r *InMemoryQuestionRepository) GetByCategory(category string) (models.Ques
 	}
 	return models.Question{}, nil
 }
+
+func (r *InMemoryQuestionRepository) GetCategories() ([]string, error) {
+	categories := make([]string, 0)
+	seenCategories := make(map[string]struct{}, 0)
+
+	for _, q := range r.questions {
+		if _, ok := seenCategories[q.Category]; !ok {
+			categories = append(categories, q.Category)
+			seenCategories[q.Category] = struct{}{}
+		}
+	}
+	if len(categories) == 0 {
+		return []string{}, errors.New("no categories found")
+	}
+	return categories, nil
+}

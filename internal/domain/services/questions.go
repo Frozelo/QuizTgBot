@@ -11,6 +11,7 @@ type ImMemmoryRepository interface {
 	GetAll() []models.Question
 	GetByID(id uint) (models.Question, bool)
 	GetAllByCategory(category string) ([]models.Question, error)
+	GetCategories() ([]string, error)
 }
 
 type QuestionService struct {
@@ -35,6 +36,10 @@ func (s *QuestionService) GetRandomByCategory(category string) (models.Question,
 	rand.NewSource(time.Now().UnixMicro())
 	return question[rand.Intn(len(question))], nil
 
+}
+
+func (s *QuestionService) GetCategories() ([]string, error) {
+	return s.repo.GetCategories()
 }
 
 func (s *QuestionService) CheckAnswer(question models.Question, answer string) bool {

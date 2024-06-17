@@ -53,7 +53,7 @@ func (h *BotHandler) handleNormalState(message *tgbotapi.Message) {
 		h.askRandomQuestion(message.Chat.ID)
 	case "category":
 		h.bot.Send(tgbotapi.NewMessage(message.Chat.ID, "Пожалуйста, укажите категорию вопросов."))
-		h.state = AwaitingCategoryState
+		h.showCategoryButtons(message.Chat.ID)
 	case "exit":
 		h.endTest(message.Chat.ID)
 	default:
@@ -101,6 +101,26 @@ func (h *BotHandler) askRandomQuestionByCategory(chatID int64) {
 		h.currentQuestion = &question
 		h.bot.Send(tgbotapi.NewMessage(chatID, question.Question))
 	}
+}
+
+func (h *BotHandler) showCategoryButtons(chatID int64) {
+	categories, err := h.questionService.GetCategories()
+	if err != nil {
+		h.bot.Send(tgbotapi.NewMessage(chatID, "В данной категории нет вопросов."))
+		return
+	}
+	var buttons []tgbotapi.KeyboardButton
+	for _, category := range categories {
+		buttons = append(buttons, tgbotapi.NewKeyboardButton(category))
+
+	}
+
+	replyMarkup := tgbotapi.NewReplyKeyboard(tgbotapi.NewKeyboardButtonRow(buttons...))
+	msg := tgbotapi.NewMessage(chatID, "Выберите категорию:")
+	msg.ReplyMarkup = replyMarkup
+
+	h.bot.Send(msg)
+	h.state = AwaitingCategoryState
 }
 
 func (h *BotHandler) endTest(chatID int64) {
