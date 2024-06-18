@@ -14,6 +14,7 @@ type BotState int
 
 const (
 	NormalState BotState = iota
+	InTestState
 	AwaitingCategoryState
 )
 
@@ -40,6 +41,8 @@ func (h *BotHandler) HandleMessage(message *tgbotapi.Message) {
 	switch h.state {
 	case NormalState:
 		h.handleNormalState(message)
+	case InTestState:
+		h.handleInTestState(message)
 	case AwaitingCategoryState:
 		h.handleAwaitingCategoryState(message)
 	}
@@ -48,22 +51,31 @@ func (h *BotHandler) HandleMessage(message *tgbotapi.Message) {
 func (h *BotHandler) handleNormalState(message *tgbotapi.Message) {
 	switch message.Command() {
 	case "start":
-		h.bot.Send(tgbotapi.NewMessage(message.Chat.ID, "Привет! Я бот для подготовки к собеседованиям по Go. Используйте команду /question для получения вопроса. Используйте команду /category для выбора категории вопросов."))
+		h.sendWelcomeMessage(message.Chat.ID)
 	case "question":
-		h.askRandomQuestion(message.Chat.ID)
+		h.startTest(message.Chat.ID)
+	case "test":
+		h.startTest(message.Chat.ID)
 	case "category":
-		h.bot.Send(tgbotapi.NewMessage(message.Chat.ID, "Пожалуйста, укажите категорию вопросов."))
-		h.showCategoryButtons(message.Chat.ID)
+		h.promptForCategory(message.Chat.ID)
 	case "exit":
 		h.endTest(message.Chat.ID)
 	default:
+		h.bot.Send(tgbotapi.NewMessage(message.Chat.ID, "Неизвестная команда. Используйте /start, /question, /category или /exit."))
+	}
+}
+
+func (h *BotHandler) handleInTestState(message *tgbotapi.Message) {
+	if message.Command() == "exit" {
+		h.endTest(message.Chat.ID)
+	} else {
 		h.handleAnswer(message)
 	}
 }
 
 func (h *BotHandler) handleAwaitingCategoryState(message *tgbotapi.Message) {
 	h.category = strings.TrimSpace(message.Text)
-	h.state = NormalState
+	h.state = InTestState
 	h.askRandomQuestionByCategory(message.Chat.ID)
 }
 
@@ -90,7 +102,7 @@ func (h *BotHandler) handleAnswer(message *tgbotapi.Message) {
 func (h *BotHandler) askRandomQuestion(chatID int64) {
 	question := h.questionService.GetRandom()
 	h.currentQuestion = &question
-	h.bot.Send(tgbotapi.NewMessage(chatID, question.Question))
+	h.sendQuestionMessage(chatID, question.Question)
 }
 
 func (h *BotHandler) askRandomQuestionByCategory(chatID int64) {
@@ -99,33 +111,79 @@ func (h *BotHandler) askRandomQuestionByCategory(chatID int64) {
 		h.bot.Send(tgbotapi.NewMessage(chatID, "В данной категории нет вопросов."))
 	} else {
 		h.currentQuestion = &question
-		h.bot.Send(tgbotapi.NewMessage(chatID, question.Question))
+		h.sendQuestionMessage(chatID, question.Question)
 	}
+}
+
+func (h *BotHandler) sendWelcomeMessage(chatID int64) {
+	msg := tgbotapi.NewMessage(chatID, "Привет! Я бот для подготовки к собеседованиям по Go. Используйте команду /question для получения вопроса. Используйте команду /category для выбора категории вопросов.")
+	h.bot.Send(msg)
+	h.showStartButtons(chatID)
+}
+
+func (h *BotHandler) promptForCategory(chatID int64) {
+	h.bot.Send(tgbotapi.NewMessage(chatID, "Пожалуйста, укажите категорию вопросов."))
+	h.showCategoryButtons(chatID)
+	h.state = AwaitingCategoryState
+}
+
+func (h *BotHandler) showStartButtons(chatID int64) {
+	buttons := []tgbotapi.KeyboardButton{
+		tgbotapi.NewKeyboardButton("/question"),
+		tgbotapi.NewKeyboardButton("/test"),
+		tgbotapi.NewKeyboardButton("/category"),
+	}
+
+	replyMarkup := tgbotapi.NewReplyKeyboard(buttons)
+	msg := tgbotapi.NewMessage(chatID, "Выберите действие:")
+	msg.ReplyMarkup = replyMarkup
+
+	h.bot.Send(msg)
 }
 
 func (h *BotHandler) showCategoryButtons(chatID int64) {
 	categories, err := h.questionService.GetCategories()
 	if err != nil {
-		h.bot.Send(tgbotapi.NewMessage(chatID, "В данной категории нет вопросов."))
+		h.bot.Send(tgbotapi.NewMessage(chatID, "Не удалось получить категории вопросов."))
 		return
 	}
+
 	var buttons []tgbotapi.KeyboardButton
 	for _, category := range categories {
 		buttons = append(buttons, tgbotapi.NewKeyboardButton(category))
-
 	}
 
-	replyMarkup := tgbotapi.NewReplyKeyboard(tgbotapi.NewKeyboardButtonRow(buttons...))
+	replyMarkup := tgbotapi.NewReplyKeyboard(
+		tgbotapi.NewKeyboardButtonRow(buttons...),
+	)
 	msg := tgbotapi.NewMessage(chatID, "Выберите категорию:")
 	msg.ReplyMarkup = replyMarkup
 
 	h.bot.Send(msg)
-	h.state = AwaitingCategoryState
+}
+
+func (h *BotHandler) sendQuestionMessage(chatID int64, question string) {
+	msg := tgbotapi.NewMessage(chatID, question)
+	msg.ReplyMarkup = tgbotapi.NewReplyKeyboard(
+		tgbotapi.NewKeyboardButtonRow(
+			tgbotapi.NewKeyboardButton("/exit"),
+		),
+	)
+	h.bot.Send(msg)
+}
+
+func (h *BotHandler) startTest(chatID int64) {
+	h.state = InTestState
+	h.askRandomQuestion(chatID)
 }
 
 func (h *BotHandler) endTest(chatID int64) {
 	finalScoreMessage := fmt.Sprintf("Тест завершен. Ваши итоговые очки: %d", h.score)
 	h.bot.Send(tgbotapi.NewMessage(chatID, finalScoreMessage))
+	h.reset()
+}
+
+func (h *BotHandler) reset() {
 	h.currentQuestion = nil
 	h.score = 0
 	h.category = ""
