@@ -79,18 +79,24 @@ func (h *StateHandler) startTest(bot *tgbotapi.BotAPI, chatID int64) {
 func (h *StateHandler) askRandomQuestion(bot *tgbotapi.BotAPI, chatID int64) {
 	question := h.questionService.GetRandom()
 	h.currentQuestion = &question
-	h.messageSender.SendQuestionMessage(bot, chatID, question.Question)
+	h.messageSender.SendQuestionMessage(bot, chatID, question)
 }
 
 func (h *StateHandler) handleAnswerCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery) {
 	userAnswer := strings.TrimSpace(callback.Data)
 	var responseMsg tgbotapi.EditMessageTextConfig
-	if h.questionService.CheckAnswer(*h.currentQuestion, userAnswer) {
-		h.score += int(h.currentQuestion.Points)
-		responseMsg = tgbotapi.NewEditMessageText(callback.Message.Chat.ID, callback.Message.MessageID, fmt.Sprintf("Правильно! Ваши очки: %d", h.score))
+	correct, err := h.questionService.CheckAnswer(*h.currentQuestion, userAnswer)
+	if err != nil {
+		responseMsg = tgbotapi.NewEditMessageText(callback.Message.Chat.ID, callback.Message.MessageID, fmt.Sprintf("Произошла ошибка при проверке ответа: %v", err))
 	} else {
-		responseMsg = tgbotapi.NewEditMessageText(callback.Message.Chat.ID, callback.Message.MessageID, fmt.Sprintf("Неправильно!\nПравильный ответ: %s", h.currentQuestion.Answer))
+		if correct {
+			h.score += int(h.currentQuestion.Points)
+			responseMsg = tgbotapi.NewEditMessageText(callback.Message.Chat.ID, callback.Message.MessageID, fmt.Sprintf("Правильно! Ваши очки: %d", h.score))
+		} else {
+			responseMsg = tgbotapi.NewEditMessageText(callback.Message.Chat.ID, callback.Message.MessageID, fmt.Sprintf("Неправильно!\nПравильный ответ: %v", h.currentQuestion.RightAnswerID))
+		}
 	}
+
 	bot.Send(responseMsg)
 
 	if h.category == "" {

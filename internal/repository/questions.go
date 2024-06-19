@@ -20,7 +20,7 @@ func (r *InMemoryQuestionRepository) GetAll() []models.Question {
 	return r.questions
 }
 
-func (r *InMemoryQuestionRepository) GetByID(id uint) (models.Question, bool) {
+func (r *InMemoryQuestionRepository) GetByID(id int) (models.Question, bool) {
 	for _, q := range r.questions {
 		if q.ID == id {
 			return q, true

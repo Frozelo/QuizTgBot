@@ -1,9 +1,14 @@
 package models
 
+type Answer struct {
+	ID   int
+	Text string
+}
 type Question struct {
-	ID       uint
-	Category string
-	Question string
-	Answer   string
-	Points   uint
+	ID            int
+	Category      string
+	Question      string
+	Answers       []Answer
+	RightAnswerID int
+	Points        uint
 }
