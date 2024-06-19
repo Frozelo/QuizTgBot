@@ -25,20 +25,22 @@ func Start() {
 	log.Printf("Authorized on account %s", bot.Self.UserName)
 
 	repo := repository.NewInMemoryQuestionRepository()
-	service := services.NewQuestionService(repo)
-	handler := NewBotHandler(bot, service)
 
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
 
 	updates := bot.GetUpdatesChan(u)
 
+	questionService := services.NewQuestionService(repo)
+	messageSender := NewMessageSender()
+	handler := NewBotHandler(bot, questionService, messageSender)
+
 	for update := range updates {
-		if update.Message == nil {
-			continue
+		if update.Message != nil {
+			handler.HandleMessage(update.Message)
 		}
-
-		handler.HandleMessage(update.Message)
-
+		if update.CallbackQuery != nil {
+			handler.HandleCallback(update.CallbackQuery)
+		}
 	}
 }
