@@ -9,5 +9,6 @@ import (
 type Sender interface {
 	SendWelcomeMessage(bot *tgbotapi.BotAPI, chatID int64)
 	SendQuestionMessage(bot *tgbotapi.BotAPI, chatID int64, question models.Question)
+	SendCategoryQuestionMessage(bot *tgbotapi.BotAPI, chatID int64, question models.Question)
 	ShowStartButtons(bot *tgbotapi.BotAPI, chatID int64)
 }
