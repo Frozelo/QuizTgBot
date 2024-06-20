@@ -11,11 +11,19 @@ import (
 )
 
 type BotState int
+type TestType int
 
 const (
 	NormalState BotState = iota
 	InTestState
 )
+
+const (
+	NormalTest TestType = iota
+	CategoryTest
+)
+
+const ()
 
 type StateHandler struct {
 	state           BotState
@@ -57,9 +65,9 @@ func (h *StateHandler) handleDefaultState(bot *tgbotapi.BotAPI, message *tgbotap
 	case "start":
 		h.messageSender.SendWelcomeMessage(bot, message.Chat.ID)
 	case "question", "test":
-		h.startTest(bot, message.Chat.ID, "")
+		h.startTest(bot, message.Chat.ID, NormalTest)
 	case "category":
-		h.startTest(bot, message.Chat.ID, "Go1")
+		h.startTest(bot, message.Chat.ID, CategoryTest)
 	case "exit":
 		h.endTest(bot, message.Chat.ID)
 	default:
@@ -67,28 +75,32 @@ func (h *StateHandler) handleDefaultState(bot *tgbotapi.BotAPI, message *tgbotap
 	}
 }
 
-func (h *StateHandler) startTest(bot *tgbotapi.BotAPI, chatID int64, category string) {
+// TODO Try Factory pattern. Like create and operate a few objects of test.
+func (h *StateHandler) startTest(bot *tgbotapi.BotAPI, chatID int64, testType TestType) {
 	h.state = InTestState
-	h.category = category
-	h.askNextQuestion(bot, chatID)
-}
-
-func (h *StateHandler) askNextQuestion(bot *tgbotapi.BotAPI, chatID int64) {
-	var question models.Question
-	var err error
-
-	if h.category == "" {
-		question = h.questionService.GetRandom()
-	} else {
-		question, err = h.questionService.GetRandomByCategory(h.category)
-		if err != nil {
-			bot.Send(tgbotapi.NewMessage(chatID, "Произошла ошибка при получении вопроса из категории."))
-			return
-		}
+	switch testType {
+	case NormalTest:
+		h.askRandomQuestion(bot, chatID)
+	case CategoryTest:
+		h.askRandomCategoryQuestion(bot, chatID, "Go1")
 	}
 
+}
+
+func (h *StateHandler) askRandomQuestion(bot *tgbotapi.BotAPI, chatID int64) {
+	question := h.questionService.GetRandom()
 	h.currentQuestion = &question
 	h.messageSender.SendQuestionMessage(bot, chatID, question)
+}
+
+func (h *StateHandler) askRandomCategoryQuestion(bot *tgbotapi.BotAPI, chatID int64, category string) {
+	question, err := h.questionService.GetRandomByCategory(category)
+	if err != nil {
+		bot.Send(tgbotapi.NewMessage(chatID, "Произошла ошибка при получении вопроса из категории."))
+		return
+	}
+	h.currentQuestion = &question
+	h.messageSender.SendCategoryQuestionMessage(bot, chatID, question)
 }
 
 func (h *StateHandler) handleInTestState(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
@@ -114,7 +126,9 @@ func (h *StateHandler) handleAnswerCallback(bot *tgbotapi.BotAPI, callback *tgbo
 
 	bot.Send(responseMsg)
 
-	h.askNextQuestion(bot, callback.Message.Chat.ID)
+	if h.category == "" {
+		h.askRandomQuestion(bot, callback.Message.Chat.ID)
+	}
 }
 
 func (h *StateHandler) endTest(bot *tgbotapi.BotAPI, chatID int64) {
