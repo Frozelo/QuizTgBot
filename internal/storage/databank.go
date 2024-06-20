@@ -24,13 +24,27 @@ var Questions = []models.Question{
 		RightAnswerID: 1,
 		Points:        1,
 	},
-	// {
-	// 		ID:       2,
-	// 		Category: "Go",
-	// 		Question: "Что такое канал (channel) в Go?",
-	// 		Answer:   "Канал (channel) - это средство для коммуникации между goroutine'ами, обеспечивающее безопасную передачу данных.",
-	// 		Points:   2,
-	// 	},
+	{
+		ID:       2,
+		Category: "Go",
+		Question: "Что такое канал (channel) в Go?",
+		Answers: []models.Answer{
+			{
+				ID:   1,
+				Text: "Легковесный поток (goroutine)",
+			},
+			{
+				ID:   2,
+				Text: "Средство общения между каналами",
+			},
+			{
+				ID:   3,
+				Text: "Процесс (process)",
+			},
+		},
+		RightAnswerID: 1,
+		Points:        2,
+	},
 	// 	{
 	// 		ID:       3,
 	// 		Category: "Go",
