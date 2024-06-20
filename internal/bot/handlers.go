@@ -13,11 +13,12 @@ type BotHandler struct {
 	messageSender   Sender
 }
 
-func NewBotHandler(bot *tgbotapi.BotAPI, questionService *services.QuestionService, messageSender Sender) *BotHandler {
+func NewBotHandler(bot *tgbotapi.BotAPI, questionService *services.QuestionService,
+	stateHandler Stater, messageSender Sender) *BotHandler {
 	return &BotHandler{
 		bot:             bot,
 		questionService: questionService,
-		stateHandler:    NewStateHandler(questionService, messageSender),
+		stateHandler:    stateHandler,
 		messageSender:   messageSender,
 	}
 }

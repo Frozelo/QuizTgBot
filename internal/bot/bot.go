@@ -33,7 +33,8 @@ func Start() {
 
 	questionService := services.NewQuestionService(repo)
 	messageSender := NewMessageSender()
-	handler := NewBotHandler(bot, questionService, messageSender)
+	stateHandler := NewStateHandler(questionService, messageSender)
+	handler := NewBotHandler(bot, questionService, stateHandler, messageSender)
 
 	for update := range updates {
 		if update.Message != nil {
