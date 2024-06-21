@@ -42,11 +42,25 @@ func (s *QuestionService) GetCategories() ([]string, error) {
 	return s.repo.GetCategories()
 }
 
-func (s *QuestionService) CheckAnswer(question models.Question, answer string) (bool, error) {
+func (s *QuestionService) GetRightAnswerID(question *models.Question) int {
+	return question.RightAnswerID
+
+}
+
+func (s *QuestionService) GetRightAnswerText(question *models.Question) string {
+	for _, answer := range question.Answers {
+		if answer.ID == question.RightAnswerID {
+			return answer.Text
+		}
+	}
+	return ""
+}
+
+func (s *QuestionService) CheckUserAnswer(question *models.Question, answer string) (bool, error) {
 	userAnswer, err := strconv.Atoi(answer)
 	if err != nil {
 		return false, err
 	}
 
-	return question.RightAnswerID == userAnswer, nil
+	return s.GetRightAnswerID(question) == userAnswer, nil
 }

@@ -84,22 +84,30 @@ func (h *TestStateHandler) Handle(bot *tgbotapi.BotAPI, message *tgbotapi.Messag
 
 func (h *TestStateHandler) HandleCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery) {
 	userAnswer := strings.TrimSpace(callback.Data)
-	var responseMsg tgbotapi.EditMessageTextConfig
-	correct, err := h.ctx.questionService.CheckAnswer(*h.ctx.currentQuestion, userAnswer)
-	if err != nil {
-		responseMsg = tgbotapi.NewEditMessageText(callback.Message.Chat.ID, callback.Message.MessageID, fmt.Sprintf("Произошла ошибка при проверке ответа: %v", err))
-	} else {
-		if correct {
-			h.ctx.score += int(h.ctx.currentQuestion.Points)
-			responseMsg = tgbotapi.NewEditMessageText(callback.Message.Chat.ID, callback.Message.MessageID, fmt.Sprintf("Правильно! Ваши очки: %d", h.ctx.score))
-		} else {
-			responseMsg = tgbotapi.NewEditMessageText(callback.Message.Chat.ID, callback.Message.MessageID, fmt.Sprintf("Неправильно!\nПравильный ответ: %v", h.ctx.currentQuestion.RightAnswerID))
-		}
-	}
-
+	responseMsg := h.generateResponseMessage(userAnswer, callback.Message.Chat.ID, callback.Message.MessageID)
 	bot.Send(responseMsg)
 	h.askRandomQuestion(bot, callback.Message.Chat.ID)
+}
 
+func (h *TestStateHandler) generateResponseMessage(userAnswer string, chatID int64, messageID int) tgbotapi.EditMessageTextConfig {
+	var responseMsg tgbotapi.EditMessageTextConfig
+	correct, err := h.ctx.questionService.CheckUserAnswer(h.ctx.currentQuestion, userAnswer)
+	if err != nil {
+		responseMsg = tgbotapi.NewEditMessageText(chatID, messageID, fmt.Sprintf("Произошла ошибка при проверке ответа: %v", err))
+	} else {
+		if correct {
+			responseMsg = tgbotapi.NewEditMessageText(chatID, messageID, fmt.Sprintf("Правильно! Ваши очки: %d", h.handleCorrectAnswer()))
+		} else {
+			answer := h.ctx.questionService.GetRightAnswerText(h.ctx.currentQuestion)
+			responseMsg = tgbotapi.NewEditMessageText(chatID, messageID, fmt.Sprintf("Неправильно!\nПравильный ответ: %s", answer))
+		}
+	}
+	return responseMsg
+}
+
+func (h *TestStateHandler) handleCorrectAnswer() int {
+	h.ctx.score += int(h.ctx.currentQuestion.Points)
+	return h.ctx.score
 }
 
 func (h *TestStateHandler) askRandomQuestion(bot *tgbotapi.BotAPI, chatID int64) {
