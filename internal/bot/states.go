@@ -3,19 +3,22 @@ package bot
 import (
 	"fmt"
 	"log"
+	"strings"
+
 	"quiz-bot/internal/domain/models"
 	"quiz-bot/internal/domain/services"
-	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
+// Define BotState and TestType as enumerations
 type BotState int
 type TestType int
 
 const (
 	NormalState BotState = iota
-	InTestState
+	CategoryTestState
+	InDefaultTestState
 )
 
 const (
@@ -23,8 +26,7 @@ const (
 	CategoryTest
 )
 
-const ()
-
+// StateHandler struct to manage bot states
 type StateHandler struct {
 	state           BotState
 	currentQuestion *models.Question
@@ -34,6 +36,7 @@ type StateHandler struct {
 	messageSender   Sender
 }
 
+// NewStateHandler constructor
 func NewStateHandler(questionService *services.QuestionService, messageSender Sender) *StateHandler {
 	return &StateHandler{
 		state:           NormalState,
@@ -42,20 +45,24 @@ func NewStateHandler(questionService *services.QuestionService, messageSender Se
 	}
 }
 
+// HandleState processes incoming messages based on the current state
 func (h *StateHandler) HandleState(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	log.Printf("[%s] %s", message.From.UserName, message.Text)
 
 	switch h.state {
 	case NormalState:
 		h.handleDefaultState(bot, message)
-	case InTestState:
+	case InDefaultTestState:
 		h.handleInTestState(bot, message)
 	}
 }
 
+// HandleCallback processes callback queries based on the current state
 func (h *StateHandler) HandleCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery) {
 	switch h.state {
-	case InTestState:
+	case NormalState:
+		h.handleCategoryCallback(bot, callback)
+	case InDefaultTestState:
 		h.handleAnswerCallback(bot, callback)
 	}
 }
@@ -67,7 +74,7 @@ func (h *StateHandler) handleDefaultState(bot *tgbotapi.BotAPI, message *tgbotap
 	case "question", "test":
 		h.startTest(bot, message.Chat.ID, NormalTest)
 	case "category":
-		h.startTest(bot, message.Chat.ID, CategoryTest)
+		h.askForCategoryCallback(bot, message.Chat.ID)
 	case "exit":
 		h.endTest(bot, message.Chat.ID)
 	default:
@@ -75,38 +82,16 @@ func (h *StateHandler) handleDefaultState(bot *tgbotapi.BotAPI, message *tgbotap
 	}
 }
 
-// TODO Try Factory pattern. Like create and operate a few objects of test.
-func (h *StateHandler) startTest(bot *tgbotapi.BotAPI, chatID int64, testType TestType) {
-	h.state = InTestState
-	switch testType {
-	case NormalTest:
-		h.askRandomQuestion(bot, chatID)
-	case CategoryTest:
-		h.askRandomCategoryQuestion(bot, chatID, "Go1")
-	}
-
-}
-
-func (h *StateHandler) askRandomQuestion(bot *tgbotapi.BotAPI, chatID int64) {
-	question := h.questionService.GetRandom()
-	h.currentQuestion = &question
-	h.messageSender.SendQuestionMessage(bot, chatID, question)
-}
-
-func (h *StateHandler) askRandomCategoryQuestion(bot *tgbotapi.BotAPI, chatID int64, category string) {
-	question, err := h.questionService.GetRandomByCategory(category)
-	if err != nil {
-		bot.Send(tgbotapi.NewMessage(chatID, "Произошла ошибка при получении вопроса из категории."))
-		return
-	}
-	h.currentQuestion = &question
-	h.messageSender.SendCategoryQuestionMessage(bot, chatID, question)
-}
-
 func (h *StateHandler) handleInTestState(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	if message.Command() == "exit" {
 		h.endTest(bot, message.Chat.ID)
 	}
+}
+
+func (h *StateHandler) handleCategoryCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery) {
+	h.category = callback.Data
+	h.state = InDefaultTestState
+	h.askRandomCategoryQuestion(bot, callback.Message.Chat.ID, h.category)
 }
 
 func (h *StateHandler) handleAnswerCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery) {
@@ -128,7 +113,42 @@ func (h *StateHandler) handleAnswerCallback(bot *tgbotapi.BotAPI, callback *tgbo
 
 	if h.category == "" {
 		h.askRandomQuestion(bot, callback.Message.Chat.ID)
+	} else {
+		h.askRandomCategoryQuestion(bot, callback.Message.Chat.ID, h.category)
 	}
+}
+
+func (h *StateHandler) startTest(bot *tgbotapi.BotAPI, chatID int64, testType TestType) {
+	h.state = InDefaultTestState
+	switch testType {
+	case NormalTest:
+		h.askRandomQuestion(bot, chatID)
+	}
+}
+
+func (h *StateHandler) askRandomQuestion(bot *tgbotapi.BotAPI, chatID int64) {
+	question := h.questionService.GetRandom()
+	h.currentQuestion = &question
+	h.messageSender.SendQuestionMessage(bot, chatID, question)
+}
+
+func (h *StateHandler) askRandomCategoryQuestion(bot *tgbotapi.BotAPI, chatID int64, category string) {
+	question, err := h.questionService.GetRandomByCategory(category)
+	if err != nil {
+		bot.Send(tgbotapi.NewMessage(chatID, "Произошла ошибка при получении вопроса из категории."))
+		return
+	}
+	h.currentQuestion = &question
+	h.messageSender.SendCategoryQuestionMessage(bot, chatID, question)
+}
+
+func (h *StateHandler) askForCategoryCallback(bot *tgbotapi.BotAPI, chatID int64) {
+	categories, error := h.questionService.GetCategories()
+	if error != nil {
+		bot.Send(tgbotapi.NewMessage(chatID, "Произошла ошибка при получении списка категорий."))
+		return
+	}
+	h.messageSender.SendCategorySelectionMessage(bot, chatID, categories)
 }
 
 func (h *StateHandler) endTest(bot *tgbotapi.BotAPI, chatID int64) {

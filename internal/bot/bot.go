@@ -34,14 +34,12 @@ func Start() {
 	questionService := services.NewQuestionService(repo)
 	messageSender := NewMessageSender()
 	stateHandler := NewStateHandler(questionService, messageSender)
-	handler := NewBotHandler(bot, questionService, stateHandler, messageSender)
 
 	for update := range updates {
 		if update.Message != nil {
-			handler.HandleMessage(update.Message)
-		}
-		if update.CallbackQuery != nil {
-			handler.HandleCallback(update.CallbackQuery)
+			stateHandler.HandleState(bot, update.Message)
+		} else if update.CallbackQuery != nil {
+			stateHandler.HandleCallback(bot, update.CallbackQuery)
 		}
 	}
 }

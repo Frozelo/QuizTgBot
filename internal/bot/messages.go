@@ -31,6 +31,18 @@ func (s *MessageSender) SendQuestionMessage(bot *tgbotapi.BotAPI, chatID int64, 
 	bot.Send(msg)
 }
 
+func (s *MessageSender) SendCategorySelectionMessage(bot *tgbotapi.BotAPI, chatID int64, categories []string) {
+	msg := tgbotapi.NewMessage(chatID, "Выберите категорию:")
+	var rows [][]tgbotapi.InlineKeyboardButton
+	for _, category := range categories {
+		button := tgbotapi.NewInlineKeyboardButtonData(category, category)
+		row := tgbotapi.NewInlineKeyboardRow(button)
+		rows = append(rows, row)
+	}
+	msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(rows...)
+	bot.Send(msg)
+}
+
 func (s *MessageSender) SendCategoryQuestionMessage(bot *tgbotapi.BotAPI, chatID int64, question models.Question) {
 	s.SendQuestionMessage(bot, chatID, question)
 }
