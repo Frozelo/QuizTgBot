@@ -5,6 +5,6 @@ import (
 )
 
 type Stater interface {
-	HandleState(bot *tgbotapi.BotAPI, message *tgbotapi.Message)
+	Handle(bot *tgbotapi.BotAPI, message *tgbotapi.Message)
 	HandleCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery)
 }

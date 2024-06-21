@@ -7,26 +7,30 @@ import (
 )
 
 type BotHandler struct {
-	bot             *tgbotapi.BotAPI
-	questionService *services.QuestionService
-	stateHandler    Stater
-	messageSender   Sender
+	botAPI       *tgbotapi.BotAPI
+	stateHandler Stater
+	stateContext *StateContext
 }
 
-func NewBotHandler(bot *tgbotapi.BotAPI, questionService *services.QuestionService,
-	stateHandler Stater, messageSender Sender) *BotHandler {
-	return &BotHandler{
-		bot:             bot,
+func NewBot(botAPI *tgbotapi.BotAPI, questionService *services.QuestionService, messageSender Sender) *BotHandler {
+	stateContext := &StateContext{
+		currentQuestion: nil,
+		score:           0,
 		questionService: questionService,
-		stateHandler:    stateHandler,
 		messageSender:   messageSender,
 	}
+	botHandler := &BotHandler{
+		stateContext: stateContext,
+		botAPI:       botAPI,
+	}
+	botHandler.stateHandler = NewNormalStateHandler(stateContext)
+	return botHandler
 }
 
 func (h *BotHandler) HandleMessage(message *tgbotapi.Message) {
-	h.stateHandler.HandleState(h.bot, message)
+	h.stateHandler.Handle(h.botAPI, message)
 }
 
 func (h *BotHandler) HandleCallback(callback *tgbotapi.CallbackQuery) {
-	h.stateHandler.HandleCallback(h.bot, callback)
+	h.stateHandler.HandleCallback(h.botAPI, callback)
 }

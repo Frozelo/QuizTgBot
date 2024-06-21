@@ -47,6 +47,11 @@ func (s *MessageSender) SendCategoryQuestionMessage(bot *tgbotapi.BotAPI, chatID
 	s.SendQuestionMessage(bot, chatID, question)
 }
 
+func (s *MessageSender) SendErrorMessage(bot *tgbotapi.BotAPI, chatID int64) {
+	msg := tgbotapi.NewMessage(chatID, "Ошибка")
+	bot.Send(msg)
+}
+
 func (s *MessageSender) ShowStartButtons(bot *tgbotapi.BotAPI, chatID int64) {
 	msg := tgbotapi.NewMessage(chatID, "Выберите действие:")
 	msg.ReplyMarkup = tgbotapi.NewReplyKeyboard(

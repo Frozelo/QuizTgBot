@@ -12,4 +12,5 @@ type Sender interface {
 	SendCategoryQuestionMessage(bot *tgbotapi.BotAPI, chatID int64, question models.Question)
 	SendCategorySelectionMessage(bot *tgbotapi.BotAPI, chatID int64, categories []string)
 	ShowStartButtons(bot *tgbotapi.BotAPI, chatID int64)
+	SendErrorMessage(bot *tgbotapi.BotAPI, chatID int64)
 }
