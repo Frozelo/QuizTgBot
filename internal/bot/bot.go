@@ -15,32 +15,37 @@ func Start() {
 		log.Fatal("TELEGRAM_BOT_TOKEN environment variable not set")
 	}
 
-	bot, err := tgbotapi.NewBotAPI(token)
+	botAPI, err := tgbotapi.NewBotAPI(token)
 	if err != nil {
 		log.Panic(err)
 	}
 
-	bot.Debug = true
+	botAPI.Debug = true
 
-	log.Printf("Authorized on account %s", bot.Self.UserName)
+	log.Printf("Authorized on account %s", botAPI.Self.UserName)
 
 	repo := repository.NewInMemoryQuestionRepository()
 
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
 
-	updates := bot.GetUpdatesChan(u)
-
 	questionService := services.NewQuestionService(repo)
 	messageSender := NewMessageSender()
-	handler := NewBotHandler(bot, questionService, messageSender)
+	bot := NewBot(botAPI, questionService, messageSender)
+
+	// Настройка обработчиков сообщений и callback'ов
+	botAPI.Debug = true
+	updateConfig := tgbotapi.NewUpdate(0)
+	updateConfig.Timeout = 60
+
+	updates := botAPI.GetUpdatesChan(updateConfig)
 
 	for update := range updates {
 		if update.Message != nil {
-			handler.HandleMessage(update.Message)
+			bot.HandleMessage(update.Message)
 		}
 		if update.CallbackQuery != nil {
-			handler.HandleCallback(update.CallbackQuery)
+			bot.HandleCallback(update.CallbackQuery)
 		}
 	}
 }

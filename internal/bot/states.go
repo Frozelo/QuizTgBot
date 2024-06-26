@@ -10,109 +10,124 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
-type BotState int
-
-const (
-	NormalState BotState = iota
-	InTestState
-)
-
-type StateHandler struct {
-	state           BotState
+type StateContext struct {
 	currentQuestion *models.Question
 	score           int
-	category        string
 	questionService *services.QuestionService
 	messageSender   Sender
+	stateHandler    Stater
 }
 
-func NewStateHandler(questionService *services.QuestionService, messageSender Sender) *StateHandler {
-	return &StateHandler{
-		state:           NormalState,
-		questionService: questionService,
-		messageSender:   messageSender,
-	}
+func (ctx *StateContext) Reset() {
+	ctx.currentQuestion = nil
+	ctx.score = 0
 }
 
-func (h *StateHandler) HandleState(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
-	log.Printf("[%s] %s", message.From.UserName, message.Text)
-
-	switch h.state {
-	case NormalState:
-		h.handleDefaultState(bot, message)
-	case InTestState:
-		h.handleInTestState(bot, message)
-	}
+type NormalStateHandler struct {
+	ctx *StateContext
 }
 
-func (h *StateHandler) HandleCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery) {
-	switch h.state {
-	case InTestState:
-		h.handleAnswerCallback(bot, callback)
-	}
+func NewNormalStateHandler(ctx *StateContext) *NormalStateHandler {
+	return &NormalStateHandler{ctx: ctx}
 }
 
-func (h *StateHandler) handleDefaultState(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
+func (h *NormalStateHandler) Handle(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	switch message.Command() {
 	case "start":
-		h.messageSender.SendWelcomeMessage(bot, message.Chat.ID)
+		h.ctx.messageSender.SendWelcomeMessage(bot, message.Chat.ID)
 	case "question", "test":
 		h.startTest(bot, message.Chat.ID)
 	case "exit":
 		h.endTest(bot, message.Chat.ID)
 	default:
-		bot.Send(tgbotapi.NewMessage(message.Chat.ID, "Неизвестная команда. Используйте /start, /question или /exit."))
+		h.ctx.messageSender.SendErrorMessage(bot, message.Chat.ID)
 	}
 }
 
-func (h *StateHandler) handleInTestState(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
+func (h *NormalStateHandler) HandleCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery) {
+	h.ctx.stateHandler = NewTestStateHandler(h.ctx)
+	h.ctx.stateHandler.HandleCallback(bot, callback)
+}
+
+func (h *NormalStateHandler) startTest(bot *tgbotapi.BotAPI, chatID int64) {
+	h.ctx.stateHandler = NewTestStateHandler(h.ctx)
+	h.ctx.stateHandler.Handle(bot, &tgbotapi.Message{Chat: &tgbotapi.Chat{ID: chatID}, Text: "/question"})
+}
+
+func (h *NormalStateHandler) endTest(bot *tgbotapi.BotAPI, chatID int64) {
+	finalScoreMessage := fmt.Sprintf("Тест завершен. Ваши итоговые очки: %d", h.ctx.score)
+	_, err := bot.Send(tgbotapi.NewMessage(chatID, finalScoreMessage))
+	if err != nil {
+		log.Printf("Ошибка при отправке сообщения: %v", err)
+	}
+	h.ctx.Reset()
+	h.ctx.stateHandler = NewNormalStateHandler(h.ctx)
+}
+
+type TestStateHandler struct {
+	ctx *StateContext
+}
+
+func NewTestStateHandler(ctx *StateContext) *TestStateHandler {
+	return &TestStateHandler{ctx: ctx}
+}
+
+func (h *TestStateHandler) Handle(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	if message.Command() == "exit" {
 		h.endTest(bot, message.Chat.ID)
+		return
 	}
+	h.askRandomQuestion(bot, message.Chat.ID)
 }
 
-func (h *StateHandler) startTest(bot *tgbotapi.BotAPI, chatID int64) {
-	h.state = InTestState
-	h.askRandomQuestion(bot, chatID)
-}
-
-func (h *StateHandler) askRandomQuestion(bot *tgbotapi.BotAPI, chatID int64) {
-	question := h.questionService.GetRandom()
-	h.currentQuestion = &question
-	h.messageSender.SendQuestionMessage(bot, chatID, question)
-}
-
-func (h *StateHandler) handleAnswerCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery) {
+func (h *TestStateHandler) HandleCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery) {
 	userAnswer := strings.TrimSpace(callback.Data)
-	var responseMsg tgbotapi.EditMessageTextConfig
-	correct, err := h.questionService.CheckAnswer(*h.currentQuestion, userAnswer)
+	responseMsg := h.generateResponseMessage(userAnswer, callback.Message.Chat.ID, callback.Message.MessageID)
+	_, err := bot.Send(responseMsg)
 	if err != nil {
-		responseMsg = tgbotapi.NewEditMessageText(callback.Message.Chat.ID, callback.Message.MessageID, fmt.Sprintf("Произошла ошибка при проверке ответа: %v", err))
+		log.Printf("Ошибка при отправке сообщения: %v", err)
+	}
+	h.askRandomQuestion(bot, callback.Message.Chat.ID)
+}
+
+func (h *TestStateHandler) generateResponseMessage(userAnswer string, chatID int64, messageID int) tgbotapi.EditMessageTextConfig {
+	correct, err := h.ctx.questionService.CheckUserAnswer(h.ctx.currentQuestion, userAnswer)
+	if err != nil {
+		return tgbotapi.NewEditMessageText(chatID, messageID, fmt.Sprintf("Произошла ошибка при проверке ответа: %v", err))
+	}
+	if correct {
+		return tgbotapi.NewEditMessageText(chatID, messageID, h.handleCorrectAnswer())
+	}
+	return tgbotapi.NewEditMessageText(chatID, messageID, h.handleWrongAnswer())
+}
+
+func (h *TestStateHandler) handleCorrectAnswer() string {
+	h.ctx.score += int(h.ctx.currentQuestion.Points)
+	return fmt.Sprintf("Правильно! Ваши очки: %d", h.ctx.score)
+}
+
+func (h *TestStateHandler) handleWrongAnswer() string {
+	textAnswer := h.ctx.questionService.GetRightAnswerText(h.ctx.currentQuestion)
+	if h.ctx.score-int(h.ctx.currentQuestion.Points) >= 0 {
+		h.ctx.score -= int(h.ctx.currentQuestion.Points)
 	} else {
-		if correct {
-			h.score += int(h.currentQuestion.Points)
-			responseMsg = tgbotapi.NewEditMessageText(callback.Message.Chat.ID, callback.Message.MessageID, fmt.Sprintf("Правильно! Ваши очки: %d", h.score))
-		} else {
-			responseMsg = tgbotapi.NewEditMessageText(callback.Message.Chat.ID, callback.Message.MessageID, fmt.Sprintf("Неправильно!\nПравильный ответ: %v", h.currentQuestion.RightAnswerID))
-		}
+		h.ctx.score = 0
 	}
-
-	bot.Send(responseMsg)
-
-	if h.category == "" {
-		h.askRandomQuestion(bot, callback.Message.Chat.ID)
-	}
+	return fmt.Sprintf("Неправильно! Ваши очки: %d\nПравильный ответ: %s", h.ctx.score, textAnswer)
 }
 
-func (h *StateHandler) endTest(bot *tgbotapi.BotAPI, chatID int64) {
-	finalScoreMessage := fmt.Sprintf("Тест завершен. Ваши итоговые очки: %d", h.score)
-	bot.Send(tgbotapi.NewMessage(chatID, finalScoreMessage))
-	h.reset()
+func (h *TestStateHandler) askRandomQuestion(bot *tgbotapi.BotAPI, chatID int64) {
+	question := h.ctx.questionService.GetRandom()
+	h.ctx.currentQuestion = &question
+	h.ctx.messageSender.SendQuestionMessage(bot, chatID, question)
 }
 
-func (h *StateHandler) reset() {
-	h.currentQuestion = nil
-	h.score = 0
-	h.category = ""
-	h.state = NormalState
+func (h *TestStateHandler) endTest(bot *tgbotapi.BotAPI, chatID int64) {
+	finalScoreMessage := fmt.Sprintf("Тест завершен. Ваши итоговые очки: %d", h.ctx.score)
+	_, err := bot.Send(tgbotapi.NewMessage(chatID, finalScoreMessage))
+	if err != nil {
+		log.Printf("Ошибка при отправке сообщения: %v", err)
+	}
+	h.ctx.Reset()
+	h.ctx.stateHandler = NewNormalStateHandler(h.ctx)
 }

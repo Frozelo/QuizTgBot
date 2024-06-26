@@ -30,6 +30,28 @@ func (s *MessageSender) SendQuestionMessage(bot *tgbotapi.BotAPI, chatID int64, 
 	msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(rows...)
 	bot.Send(msg)
 }
+
+func (s *MessageSender) SendCategorySelectionMessage(bot *tgbotapi.BotAPI, chatID int64, categories []string) {
+	msg := tgbotapi.NewMessage(chatID, "Выберите категорию:")
+	var rows [][]tgbotapi.InlineKeyboardButton
+	for _, category := range categories {
+		button := tgbotapi.NewInlineKeyboardButtonData(category, category)
+		row := tgbotapi.NewInlineKeyboardRow(button)
+		rows = append(rows, row)
+	}
+	msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(rows...)
+	bot.Send(msg)
+}
+
+func (s *MessageSender) SendCategoryQuestionMessage(bot *tgbotapi.BotAPI, chatID int64, question models.Question) {
+	s.SendQuestionMessage(bot, chatID, question)
+}
+
+func (s *MessageSender) SendErrorMessage(bot *tgbotapi.BotAPI, chatID int64) {
+	msg := tgbotapi.NewMessage(chatID, "Ошибка")
+	bot.Send(msg)
+}
+
 func (s *MessageSender) ShowStartButtons(bot *tgbotapi.BotAPI, chatID int64) {
 	msg := tgbotapi.NewMessage(chatID, "Выберите действие:")
 	msg.ReplyMarkup = tgbotapi.NewReplyKeyboard(
